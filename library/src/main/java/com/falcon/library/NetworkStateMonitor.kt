@@ -9,6 +9,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.OnLifecycleEvent
@@ -17,15 +19,11 @@ import com.falcon.library.data.NetworkTransport
 import com.falcon.library.data.NetworkTransport.Companion.toState
 import com.falcon.library.extension.networkTransport
 import com.falcon.library.listener.NetworkStateListener
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.runBlocking
 
 class NetworkStateMonitor(
     private val context: Context,
     private val lifecycle: Lifecycle
-) : LifecycleObserver, CoroutineScope by MainScope() {
+) : LifecycleObserver {
 
     var networkState: NetworkState = NetworkState.OFFLINE
     var networkTransport: NetworkTransport = NetworkTransport.NONE
@@ -200,19 +198,22 @@ class NetworkStateMonitor(
             if (initialNetworkState == networkState) return
         }
         // if has been detected some change in state, dispatch to observers
-        if (networkStateHasChanged) dispatchNetworkChanges(networkState, networkTransport)
+        if (networkStateHasChanged) dispatchNetworkStateChanges(networkState, networkTransport)
     }
 
     /** Notify observers about the network changed state. */
-    private fun dispatchNetworkChanges(
+    private fun dispatchNetworkStateChanges(
         networkState: NetworkState,
         networkTransport: NetworkTransport
-    ) = runBlocking(Dispatchers.Main) {
-        networkStateListenerJava.forEach {
-            it.onConnectionStateChanged(networkState, networkTransport)
-        }
-        networkStateListenerKotlin.forEach {
-            it.invoke(networkState, networkTransport)
+    ) {
+        // change to main thread
+        Handler(Looper.getMainLooper()).post {
+            networkStateListenerJava.forEach {
+                it.onNetworkStateChanged(networkState, networkTransport)
+            }
+            networkStateListenerKotlin.forEach {
+                it.invoke(networkState, networkTransport)
+            }
         }
     }
 }

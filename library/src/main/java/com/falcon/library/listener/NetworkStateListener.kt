@@ -4,5 +4,5 @@ import com.falcon.library.data.NetworkState
 import com.falcon.library.data.NetworkTransport
 
 interface NetworkStateListener {
-    fun onConnectionStateChanged(networkState: NetworkState, networkTransport: NetworkTransport)
+    fun onNetworkStateChanged(networkState: NetworkState, networkTransport: NetworkTransport)
 }
