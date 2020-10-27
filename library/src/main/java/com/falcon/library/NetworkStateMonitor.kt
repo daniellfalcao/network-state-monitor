@@ -17,11 +17,15 @@ import com.falcon.library.data.NetworkTransport
 import com.falcon.library.data.NetworkTransport.Companion.toState
 import com.falcon.library.extension.networkTransport
 import com.falcon.library.listener.NetworkStateListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.runBlocking
 
 class NetworkStateMonitor(
     private val context: Context,
     private val lifecycle: Lifecycle
-) : LifecycleObserver {
+) : LifecycleObserver, CoroutineScope by MainScope() {
 
     var networkState: NetworkState = NetworkState.OFFLINE
     var networkTransport: NetworkTransport = NetworkTransport.NONE
@@ -39,7 +43,7 @@ class NetworkStateMonitor(
     private val networkBroadcastReceiver by lazy {
         object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                onNetworkStateChanged(connectivityManagerService.networkTransport())
+                onNetworkTransportChanged(connectivityManagerService.networkTransport())
             }
         }
     }
@@ -68,13 +72,13 @@ class NetworkStateMonitor(
                 networkCapabilities: NetworkCapabilities
             ) {
                 // attempt trigger the network changes listener.
-                onNetworkStateChanged(networkCapabilities.networkTransport())
+                onNetworkTransportChanged(networkCapabilities.networkTransport())
             }
 
             /** When [network] is no longer available this method is called. */
             override fun onLost(network: Network) {
                 // attempt trigger the network changes listener.
-                onNetworkStateChanged(connectivityManagerService.networkTransport())
+                onNetworkTransportChanged(connectivityManagerService.networkTransport())
             }
         }
     }
@@ -91,10 +95,18 @@ class NetworkStateMonitor(
         lifecycle.addObserver(this)
     }
 
-    /**
-     * Register a listener to network state changes. */
+    /** Register a listener to network state changes. */
     fun addNetworkStateListener(listener: NetworkStateListener) = apply {
         networkStateListenerJava.add(listener)
+    }
+
+    /**
+     * Remove a listener that has been registered before. The [listener] must be contained within
+     * in [networkStateListenerJava].
+     *
+     * */
+    fun removeNetworkStateListener(listener: NetworkStateListener) = apply {
+        networkStateListenerJava.remove(listener)
     }
 
     /** Register a listener to network state changes. */
@@ -102,6 +114,17 @@ class NetworkStateMonitor(
         listener: (networkState: NetworkState, networkTransport: NetworkTransport) -> Unit
     ) = apply {
         networkStateListenerKotlin.add(listener)
+    }
+
+    /**
+     * Remove a listener that has been registered before. The [listener] must be contained within
+     * in [networkStateListenerKotlin].
+     *
+     * */
+    fun removeNetworkStateListener(
+        listener: (networkState: NetworkState, networkTransport: NetworkTransport) -> Unit
+    ) = apply {
+        networkStateListenerKotlin.remove(listener)
     }
 
     /**
@@ -164,7 +187,7 @@ class NetworkStateMonitor(
      * @param newNetworkTransport the new transport used by network
      *
      * */
-    private fun onNetworkStateChanged(newNetworkTransport: NetworkTransport) {
+    private fun onNetworkTransportChanged(newNetworkTransport: NetworkTransport) {
         // check if state has been changed comparing with the last state
         val networkStateHasChanged = networkState != newNetworkTransport.toState()
         // update connection state and type, with the new values
@@ -184,7 +207,7 @@ class NetworkStateMonitor(
     private fun dispatchNetworkChanges(
         networkState: NetworkState,
         networkTransport: NetworkTransport
-    ) {
+    ) = runBlocking(Dispatchers.Main) {
         networkStateListenerJava.forEach {
             it.onConnectionStateChanged(networkState, networkTransport)
         }
@@ -192,5 +215,4 @@ class NetworkStateMonitor(
             it.invoke(networkState, networkTransport)
         }
     }
-
 }
